@@ -18,6 +18,7 @@ fn main() {
 
     // Create a channel for communication
     let (sender, receiver) = mpsc::channel();
+    let (sender2, receiver2) = mpsc::channel();
     
     // Initialize Clicker
     let clicker = Arc::new(Mutex::new(Clicker::new()));
@@ -25,7 +26,6 @@ fn main() {
     // Initialize TaskPerformer
     let task_performer = TaskPerformer::new(Arc::clone(&clicker), receiver);
     
-    let (sender2, receiver2) = mpsc::channel();
     // Initialize EventListener
     let event_listener = EventListener::new(sender, receiver2);
     
