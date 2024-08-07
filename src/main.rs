@@ -33,14 +33,13 @@ fn main() {
     let event_listener = event_listener.start();
     
     // Run TaskPerformer
-    let task_performer = task_performer.start();
+    let _task_performer = task_performer.start();
 
     let device_state = DeviceState::new();
     let _guard = device_state.on_key_down(move|key| {
         let _ = sender2.send(key.clone());
         event_listener.thread().unpark();
     });
-
-    let _ = task_performer.join();
-    loop {sleep(time::Duration::from_millis(1))}
+    loop {sleep(time::Duration::from_millis(10))}
+    
 }
