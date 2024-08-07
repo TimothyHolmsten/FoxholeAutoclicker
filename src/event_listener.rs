@@ -86,6 +86,9 @@ impl EventListener {
                                 sender.send(Command::None).unwrap();
                             },
                             Keycode::F10 => handle_command(Command::StartMacro, Command::ClearMacro),
+                            Keycode::Escape => {
+                                handle_command(Command::None, Command::None);
+                            }
                             _ => (),
                         }
                     }
