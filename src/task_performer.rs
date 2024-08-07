@@ -60,7 +60,7 @@ impl TaskPerformer {
                                 *task_lock = Some(Arc::new(crate::tasks::macro_task::MacroTask));
                             }
                             Command::StopClicking => {
-                                *task_lock = None
+                                *task_lock = None;
                             },
                             Command::None => *task_lock = None,
                             Command::ClearMacro => {

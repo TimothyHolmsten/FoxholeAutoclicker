@@ -3,16 +3,22 @@ use std::thread;
 
 use device_query::Keycode;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Command {
     StartClicking,
     StopClicking,
     StartHolding,
     StopHolding,
     SaveMousePosition,
+    None,
     StartMacro,
     ClearMacro,
-    None,
+}
+
+impl PartialEq for Command {
+    fn eq(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
 }
 
 pub struct EventListener {
@@ -31,33 +37,55 @@ impl EventListener {
     pub fn start(&self) -> thread::JoinHandle<()> {
         let sender = self.sender.clone();
         let receiver = Arc::clone(&self.receiver);
-        let mut running = false;
+        let running = Arc::new(Mutex::new(None)); // Shared state for tracking commands
 
         thread::spawn(move || {
             let receiver = receiver.lock().unwrap();
+            let running = Arc::clone(&running);
 
             loop {
                 thread::park();
                 match receiver.try_recv() {
                     Ok(key) => {
-                        // Define a helper function to send commands and update `running`
-                        let mut toggle_running = |start_cmd, stop_cmd| {
-                            if running {
-                                sender.send(stop_cmd).unwrap();
-                            } else {
-                                sender.send(start_cmd).unwrap();
+                        let mut running = running.lock().unwrap();
+
+                        // Define a helper function to handle starting and stopping commands
+                        let mut handle_command = |start_cmd: Command, stop_cmd: Command| {
+                            match *running {
+                                Some(current_cmd) if current_cmd == start_cmd => {
+                                    // If the same command is running, stop it
+                                    sender.send(stop_cmd).unwrap();
+                                    *running = None; // Reset running state
+                                }
+                                Some(current_cmd) => {
+                                    // Stop the currently running command
+                                    let current_stop_cmd = match current_cmd {
+                                        Command::StartClicking => Command::StopClicking,
+                                        Command::StartHolding => Command::StopHolding,
+                                        Command::StartMacro => Command::ClearMacro,
+                                        _ => Command::None,
+                                    };
+                                    sender.send(current_stop_cmd).unwrap();
+                                    // Start the new command
+                                    sender.send(start_cmd).unwrap();
+                                    *running = Some(start_cmd);
+                                }
+                                None => {
+                                    // No command is running, just start the new command
+                                    sender.send(start_cmd).unwrap();
+                                    *running = Some(start_cmd);
+                                }
                             }
-                            running = !running;
                         };
 
                         match key {
-                            Keycode::F6 => toggle_running(Command::StartClicking, Command::StopClicking),
-                            Keycode::F7 => toggle_running(Command::StartHolding, Command::StopHolding),
+                            Keycode::F6 => handle_command(Command::StartClicking, Command::StopClicking),
+                            Keycode::F7 => handle_command(Command::StartHolding, Command::StopHolding),
                             Keycode::F9 => {
                                 sender.send(Command::SaveMousePosition).unwrap();
                                 sender.send(Command::None).unwrap();
                             },
-                            Keycode::F10 => toggle_running(Command::StartMacro, Command::ClearMacro),
+                            Keycode::F10 => handle_command(Command::StartMacro, Command::ClearMacro),
                             _ => (),
                         }
                     }
