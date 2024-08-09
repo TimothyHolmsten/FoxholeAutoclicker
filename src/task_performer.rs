@@ -21,7 +21,7 @@ impl TaskPerformer {
                     let mut clicker = clicker.lock().unwrap();
                     clicker.execute();
                 }
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(50));
             }
         });
     }

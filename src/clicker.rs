@@ -14,6 +14,7 @@ pub struct Clicker {
     enigo: Enigo,
     macro_positions: Vec<(i32, i32)>,
     state: ClickerState,
+    holding: bool
 }
 #[derive(Clone, Debug)]
 enum ClickerState {
@@ -30,7 +31,8 @@ impl Clicker {
         Clicker {
             enigo: {let enigo = Enigo::new(&Settings::default()).unwrap(); enigo},
             macro_positions: Vec::new(),
-            state: ClickerState::Idle
+            state: ClickerState::Idle,
+            holding: false
         }
     }
 
@@ -155,11 +157,15 @@ impl Clicker {
     }
 
     fn hold_down(&mut self) {
-        self.enigo.button(Left, Press).expect("Could not hold down");
+        if !self.holding {
+            self.enigo.button(Left, Press).expect("Could not hold down");
+            self.holding = true;
+        }
     }
 
     fn release(&mut self) {
         thread::sleep(Duration::from_millis(50));
+        self.holding = false;
         self.enigo.button(Left, Release).expect("Could not release");
     }
 

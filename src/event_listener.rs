@@ -35,12 +35,12 @@ impl EventListener {
                 while !*notified {
                     notified = cvar.wait(notified).unwrap();
                 }
-
+                println!("Notified");
                 // Reset the notification state
                 *notified = false;
 
                 // Handle key events
-                match receiver.lock().unwrap().recv_timeout(Duration::from_millis(100)) {
+                match receiver.lock().unwrap().try_recv() {
                     Ok(key) => {
                         let new_command = match key {
                             Keycode::F6 => Command::StartClicking,
@@ -50,11 +50,17 @@ impl EventListener {
                             Keycode::Escape => Command::None,
                             _ => continue,
                         };
-                        let mut clicker = clicker.lock().unwrap();
-                        clicker.handle_command(new_command);
+                        println!("Locking clicker");
+                        // Use try_lock to avoid blocking
+                        if let Ok(mut clicker) = clicker.try_lock() {
+                            clicker.handle_command(new_command);
+                        } else {
+                            // Handle the case where clicker lock could not be acquired
+                            eprintln!("Failed to acquire clicker lock.");
+                        }
                     }
-                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(mpsc::TryRecvError::Empty) => continue,
+                    Err(mpsc::TryRecvError::Disconnected) => break,
                 }
             }
         });
