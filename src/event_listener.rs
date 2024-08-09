@@ -34,7 +34,6 @@ impl EventListener {
                 while !*notified {
                     notified = cvar.wait(notified).unwrap();
                 }
-                println!("Notified");
                 // Reset the notification state
                 *notified = false;
 
@@ -49,7 +48,6 @@ impl EventListener {
                             Keycode::Escape => Command::None,
                             _ => continue,
                         };
-                        println!("Locking clicker");
                         // Use try_lock to avoid blocking
                         if let Ok(mut clicker) = clicker.try_lock() {
                             clicker.handle_command(new_command);
