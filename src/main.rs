@@ -1,6 +1,6 @@
 use core::time;
 use std::sync::{Arc, Mutex, mpsc};
-use std::thread::{self, sleep};
+use std::thread::sleep;
 
 use device_query::{DeviceEvents, DeviceState, Keycode};
 

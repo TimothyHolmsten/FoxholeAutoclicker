@@ -1,6 +1,5 @@
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
-use std::time::Duration;
 
 use device_query::Keycode;
 
