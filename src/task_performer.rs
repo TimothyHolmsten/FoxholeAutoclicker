@@ -36,7 +36,7 @@ impl TaskPerformer {
                 // Receive a command from the channel
                 let command = {
                     let receiver = receiver.lock().unwrap();
-                    receiver.try_recv()
+                    receiver.recv_timeout(Duration::from_millis(10))
                 };
 
                 match command {
@@ -70,10 +70,11 @@ impl TaskPerformer {
                             },
                         }
                     }
-                    Err(mpsc::TryRecvError::Empty) => {
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
                         thread::sleep(Duration::from_millis(10));
                     }
-                    Err(mpsc::TryRecvError::Disconnected) => {
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        println!("Task performer stopped because of disconnected");
                         break;
                     }
                 }

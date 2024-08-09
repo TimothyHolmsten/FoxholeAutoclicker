@@ -1,5 +1,6 @@
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use device_query::Keycode;
 
@@ -24,6 +25,7 @@ impl PartialEq for Command {
 pub struct EventListener {
     sender: mpsc::Sender<Command>,
     receiver: Arc<Mutex<mpsc::Receiver<Keycode>>>,
+    condvar: Arc<(Mutex<bool>, Condvar)>,
 }
 
 impl EventListener {
@@ -31,21 +33,33 @@ impl EventListener {
         EventListener { 
             sender, 
             receiver: Arc::new(Mutex::new(receiver)),
+            condvar: Arc::new((Mutex::new(false), Condvar::new())),
         }
     }
 
-    pub fn start(&self) -> thread::JoinHandle<()> {
+    pub fn run(&self) {
         let sender = self.sender.clone();
         let receiver = Arc::clone(&self.receiver);
         let running = Arc::new(Mutex::new(None)); // Shared state for tracking commands
+        let condvar = Arc::clone(&self.condvar);
 
         thread::spawn(move || {
             let receiver = receiver.lock().unwrap();
             let running = Arc::clone(&running);
 
             loop {
-                thread::park();
-                match receiver.try_recv() {
+                let (lock, cvar) = &*condvar;
+                let mut notified = lock.lock().unwrap();
+
+                // Wait until notified
+                while !*notified {
+                    notified = cvar.wait(notified).unwrap();
+                }
+
+                // Reset the notification state
+                *notified = false;
+
+                match receiver.recv_timeout(Duration::from_millis(100)) {
                     Ok(key) => {
                         let mut running = running.lock().unwrap();
 
@@ -92,10 +106,17 @@ impl EventListener {
                             _ => (),
                         }
                     }
-                    Err(mpsc::TryRecvError::Empty) => {},
-                    Err(mpsc::TryRecvError::Disconnected) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
-        })
+        });
+    }
+
+    pub fn notify(&self) {
+        let (lock, cvar) = &*self.condvar;
+        let mut notified = lock.lock().unwrap();
+        *notified = true;
+        cvar.notify_one();
     }
 }

@@ -30,7 +30,7 @@ fn main() {
     let event_listener = EventListener::new(sender, receiver2);
     
     // Start EventListener
-    let event_listener = event_listener.start();
+    let _event_listener = event_listener.run();
     
     // Run TaskPerformer
     let _task_performer = task_performer.start();
@@ -38,7 +38,7 @@ fn main() {
     let device_state = DeviceState::new();
     let _guard = device_state.on_key_down(move|key| {
         let _ = sender2.send(key.clone());
-        event_listener.thread().unpark();
+        event_listener.notify();
     });
     loop {sleep(time::Duration::from_millis(10))}
     
