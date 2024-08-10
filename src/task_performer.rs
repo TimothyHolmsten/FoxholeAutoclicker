@@ -17,8 +17,15 @@ impl TaskPerformer {
 
         thread::spawn(move || {
             loop {
+                // Execute clicker tasks
                 {
-                    let mut clicker = clicker.lock().unwrap();
+                    let mut clicker = match clicker.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            eprintln!("Failed to lock clicker: {:?}", poisoned);
+                            continue;
+                        }
+                    };
                     clicker.execute();
                 }
                 thread::sleep(Duration::from_millis(50));

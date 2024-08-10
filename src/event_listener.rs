@@ -1,5 +1,6 @@
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use device_query::Keycode;
 
@@ -38,7 +39,7 @@ impl EventListener {
                 *notified = false;
 
                 // Handle key events
-                match receiver.lock().unwrap().try_recv() {
+                match receiver.lock().unwrap().recv() {
                     Ok(key) => {
                         let new_command = match key {
                             Keycode::F6 => Command::StartClicking,
@@ -48,16 +49,29 @@ impl EventListener {
                             Keycode::Escape => Command::None,
                             _ => continue,
                         };
-                        // Use try_lock to avoid blocking
-                        if let Ok(mut clicker) = clicker.try_lock() {
-                            clicker.handle_command(new_command);
-                        } else {
-                            // Handle the case where clicker lock could not be acquired
-                            eprintln!("Failed to acquire clicker lock.");
+                        // Retry with backoff
+                        let mut attempt = 0;
+                        let max_attempts = 5;
+                        let mut backoff_duration = Duration::from_millis(50);  // Initial backoff duration
+
+                        while attempt < max_attempts {
+                            if let Ok(mut clicker) = clicker.try_lock() {
+                                clicker.handle_command(new_command);
+                                break;
+                            } else {
+                                // Wait before retrying
+                                thread::sleep(backoff_duration);
+                                attempt += 1;
+                                // Exponential backoff
+                                backoff_duration *= 2;
+                            }
+                        }
+
+                        if attempt == max_attempts {
+                            eprintln!("Failed to acquire clicker lock after {} attempts.", max_attempts);
                         }
                     }
-                    Err(mpsc::TryRecvError::Empty) => continue,
-                    Err(mpsc::TryRecvError::Disconnected) => break,
+                    Err(mpsc::RecvError) => continue,
                 }
             }
         });

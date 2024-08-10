@@ -1,7 +1,5 @@
-use std::{thread, time::Duration};
-
 use enigo::{Direction::{Press, Release, Click}, Enigo, Mouse, Settings, Button::Left};
-
+#[derive(Debug)]
 pub enum Command {
     StartClicking,
     StartHolding,
@@ -21,8 +19,6 @@ enum ClickerState {
     Idle,
     Clicking,
     Holding,
-    Releasing(Box<ClickerState>),
-    SavingPosition,
     ExecutingMacro,
 }
 
@@ -42,32 +38,21 @@ impl Clicker {
                 match self.state {
                     ClickerState::Idle => self.set_state(ClickerState::Clicking),
                     ClickerState::Clicking => self.set_state(ClickerState::Idle),
-                    ClickerState::Holding => {
-                        self.set_state(ClickerState::Releasing(Box::new(ClickerState::Clicking)))
-                    },
-                    ClickerState::SavingPosition => {
+                    _ => {
+                        self.release();
                         self.macro_positions.clear();
                         self.set_state(ClickerState::Clicking)
-                    },
-                    ClickerState::ExecutingMacro => {
-                        self.macro_positions.clear();
-                        self.set_state(ClickerState::Clicking);
-                    },
-                    ClickerState::Releasing(_) => todo!(),
+                    }
                 }
             },
             Command::StartHolding => {
                 match self.state {
-                    ClickerState::Idle | ClickerState::Clicking => {
-                        self.set_state(ClickerState::Releasing(Box::new(ClickerState::Holding)));
-                    }
+                    ClickerState::Idle => self.set_state(ClickerState::Holding),
                     ClickerState::Holding => {
-                        self.set_state(ClickerState::Releasing(Box::new(ClickerState::Idle)));
+                        self.release();
+                        self.set_state(ClickerState::Idle);
                     },
-                    ClickerState::SavingPosition | ClickerState::ExecutingMacro => {
-                        self.set_state(ClickerState::Holding);
-                    },
-                    ClickerState::Releasing(_) => todo!(),
+                    _ => self.set_state(ClickerState::Holding)
                 }
             },
             Command::SaveMousePosition => {
@@ -81,16 +66,11 @@ impl Clicker {
                         self.save_mouse_position();
                         self.set_state(ClickerState::Idle);
                     }
-                    ClickerState::SavingPosition => {
-                        self.save_mouse_position();
-                        self.set_state(ClickerState::Idle);
-                    }
-                    ClickerState::Releasing(_) => todo!(),
                 }
             },
             Command::StartMacro => {
                 match self.state {
-                    ClickerState::Idle | ClickerState::Clicking | ClickerState::SavingPosition => {
+                    ClickerState::Idle | ClickerState::Clicking => {
                         self.set_state(ClickerState::ExecutingMacro);
                     }
                     ClickerState::ExecutingMacro => {
@@ -98,9 +78,9 @@ impl Clicker {
                         self.set_state(ClickerState::Idle)
                     },
                     ClickerState::Holding => {
-                        self.set_state(ClickerState::Releasing(Box::new(ClickerState::ExecutingMacro)));
+                        self.release();
+                        self.set_state(ClickerState::ExecutingMacro);
                     },
-                    ClickerState::Releasing(_) => todo!(),
                 }
             },
             Command::None => {
@@ -117,36 +97,6 @@ impl Clicker {
         match &self.state {
             ClickerState::Clicking => self.click(),
             ClickerState::Holding => self.hold_down(),
-            ClickerState::Releasing(state) => {
-                match **state {
-                    ClickerState::Releasing(_) => {
-                        self.release();
-                        self.set_state(ClickerState::Idle);
-                    },
-                    ClickerState::Idle => {
-                        self.release();
-                        self.set_state(ClickerState::Idle);
-                    },
-                    ClickerState::Clicking => {
-                        self.release();
-                        self.set_state(ClickerState::Clicking)
-                    },
-                    ClickerState::Holding => {
-                        self.release();
-                        self.set_state(ClickerState::Holding);
-                    },
-                    ClickerState::SavingPosition => {
-                        self.release();
-                        self.set_state(ClickerState::SavingPosition);
-                    },
-                    ClickerState::ExecutingMacro => {
-                        self.release();
-                        self.set_state(ClickerState::ExecutingMacro);
-                    },
-                    
-                }
-            },
-            ClickerState::SavingPosition => self.save_mouse_position(),
             ClickerState::ExecutingMacro => self.execute_macro(),
             ClickerState::Idle => {},
         }
@@ -158,26 +108,36 @@ impl Clicker {
 
     fn hold_down(&mut self) {
         if !self.holding {
-            self.enigo.button(Left, Press).expect("Could not hold down");
-            self.holding = true;
+            match self.enigo.button(Left, Press) {
+                Ok(_) => self.holding = true,
+                Err(err) => eprintln!("Could not press left mouse button: {}", err),
+            }
         }
     }
 
     fn release(&mut self) {
-        thread::sleep(Duration::from_millis(50));
-        self.holding = false;
-        self.enigo.button(Left, Release).expect("Could not release");
+        match self.enigo.button(Left, Release) {
+            Ok(_) => self.holding = false,
+            Err(err) => eprintln!("Could not release left mouse button: {}", err)
+        }
     }
 
     fn save_mouse_position(&mut self) {
-        let (x, y) = self.enigo.location().unwrap();
-        self.macro_positions.push((x, y));
+        match self.enigo.location() {
+            Ok((x, y)) => self.macro_positions.push((x, y)),
+            Err(_) => eprintln!("Could not get mouse location"),
+        }
     }
 
     fn execute_macro(&mut self) {
         for &(x, y) in self.macro_positions.iter() {
-            let _ = self.enigo.move_mouse(x, y, enigo::Coordinate::Abs);
-            self.enigo.button(Left, Click).expect("Could not click");
+            match self.enigo.move_mouse(x, y, enigo::Coordinate::Abs) {
+                Ok(_) => match self.enigo.button(Left, Click) {
+                    Ok(_) => (),
+                    Err(_) => eprintln!("Could not perform click in macro"),
+                },
+                Err(_) => eprintln!("Could not move mouse in macro"),
+            }
         }
     }
 }
